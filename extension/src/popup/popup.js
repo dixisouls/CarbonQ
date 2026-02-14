@@ -18,6 +18,15 @@ import {
 } from '../lib/firebase';
 import { PLATFORM_NAMES, CARBON_PER_QUERY, GOOGLE_CARBON_PER_QUERY } from '../lib/constants';
 
+// Platform icons (favicons from domains or bundled files)
+const PLATFORM_ICONS = {
+  chatgpt: 'https://chatgpt.com/favicon.ico',
+  claude: 'https://claude.ai/favicon.ico',
+  gemini: 'icons/platforms/gemini.svg',
+  perplexity: 'icons/platforms/perplexity.png',
+  google: 'https://www.google.com/favicon.ico',
+};
+
 // Average LLM emission for savings calculation
 const AVG_LLM =
   (CARBON_PER_QUERY.chatgpt +
@@ -171,26 +180,24 @@ async function loadStats(uid) {
     }
 
     // Breakdown by Service — all platforms, Google shown distinctly
-    const platforms = [
-      { key: 'chatgpt', dot: 'chatgpt' },
-      { key: 'claude', dot: 'claude' },
-      { key: 'gemini', dot: 'gemini' },
-      { key: 'perplexity', dot: 'perplexity' },
-      { key: 'google', dot: 'google' },
-    ];
+    const platforms = ['chatgpt', 'claude', 'gemini', 'perplexity', 'google'];
 
     if (totalQueries === 0) {
       breakdownListEl.innerHTML =
         '<p class="muted">No queries tracked yet. Use ChatGPT, Claude, Gemini, Perplexity, or Google Search and your carbon footprint will appear here.</p>';
     } else {
       breakdownListEl.innerHTML = platforms
-        .map(({ key, dot }) => {
+        .map((key) => {
           const data = { queries: platformCounts[key] || 0, emission: platformCarbon[key] || 0 };
           if (data.queries === 0) return '';
           const rowClass = key === 'google' ? 'site-row google-row' : 'site-row';
+          const iconSrc = PLATFORM_ICONS[key];
+          const iconHtml = iconSrc
+            ? `<div class="site-icon"><img src="${iconSrc}" alt="${PLATFORM_NAMES[key] || key}" class="site-icon-img" /></div>`
+            : '';
           return `
             <div class="${rowClass}">
-              <div class="site-dot ${dot}"></div>
+              <div class="site-icon">${iconHtml}</div>
               <div class="site-name">${PLATFORM_NAMES[key] || key}</div>
               <div class="site-stats">
                 <div class="site-queries">${data.queries}</div>
