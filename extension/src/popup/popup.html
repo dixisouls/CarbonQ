@@ -12,7 +12,7 @@
       <div class="loader"></div>
     </div>
 
-    <!-- Login view -->
+    <!-- Login / Register view -->
     <div id="login-view" class="view hidden">
       <div class="logo-section">
         <div class="logo">CQ</div>
@@ -20,7 +20,7 @@
         <p class="subtitle">Track your AI carbon footprint</p>
       </div>
 
-      <form id="login-form">
+      <form id="auth-form">
         <div class="field">
           <label for="email">Email</label>
           <input type="email" id="email" placeholder="you@example.com" required />
@@ -29,8 +29,9 @@
           <label for="password">Password</label>
           <input type="password" id="password" placeholder="Your password" required />
         </div>
-        <div id="login-error" class="error hidden"></div>
-        <button type="submit" id="login-btn">Sign In</button>
+        <div id="auth-error" class="error hidden"></div>
+        <button type="submit" id="auth-btn" class="btn-primary">Sign In</button>
+        <button type="button" id="toggle-btn" class="btn-ghost">Create Account</button>
       </form>
     </div>
 
@@ -59,6 +60,18 @@
           <span class="stat-label">CO&#8322; Emitted</span>
           <span class="stat-value" id="total-carbon">--</span>
         </div>
+      </div>
+
+      <!-- Comparison card -->
+      <div id="comparison-card" class="comparison-card hidden">
+        <div class="comparison-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div class="comparison-text" id="comparison-text"></div>
       </div>
 
       <div class="section">

@@ -1,6 +1,6 @@
 /**
  * CarbonQ Popup
- * Handles login and displays the carbon-tracking dashboard.
+ * Handles login/register and displays the carbon-tracking dashboard.
  */
 
 import './popup.css';
@@ -8,6 +8,7 @@ import {
   auth,
   db,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
   collection,
@@ -15,25 +16,44 @@ import {
   query,
   orderBy,
 } from '../lib/firebase';
-import { CARBON_PER_QUERY, PLATFORM_NAMES } from '../lib/constants';
+import { PLATFORM_NAMES, GOOGLE_CARBON_PER_QUERY } from '../lib/constants';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const loadingView = document.getElementById('loading-view');
 const loginView = document.getElementById('login-view');
 const dashboardView = document.getElementById('dashboard-view');
 
-const loginForm = document.getElementById('login-form');
+const authForm = document.getElementById('auth-form');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
-const loginBtn = document.getElementById('login-btn');
-const loginError = document.getElementById('login-error');
+const authBtn = document.getElementById('auth-btn');
+const toggleBtn = document.getElementById('toggle-btn');
+const authError = document.getElementById('auth-error');
 
 const userEmailEl = document.getElementById('user-email');
 const totalQueriesEl = document.getElementById('total-queries');
 const totalCarbonEl = document.getElementById('total-carbon');
 const topPlatformsEl = document.getElementById('top-platforms');
+const comparisonCard = document.getElementById('comparison-card');
+const comparisonText = document.getElementById('comparison-text');
 const logoutBtn = document.getElementById('logout-btn');
 const dashLoading = document.getElementById('dash-loading');
+
+// ── Auth mode toggle (login / register) ─────────────────────────────────────
+let isRegisterMode = false;
+
+toggleBtn.addEventListener('click', () => {
+  isRegisterMode = !isRegisterMode;
+  authError.classList.add('hidden');
+
+  if (isRegisterMode) {
+    authBtn.textContent = 'Create Account';
+    toggleBtn.textContent = 'Back to Sign In';
+  } else {
+    authBtn.textContent = 'Sign In';
+    toggleBtn.textContent = 'Create Account';
+  }
+});
 
 // ── View switching ──────────────────────────────────────────────────────────
 function showView(view) {
@@ -52,20 +72,29 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-// ── Login ───────────────────────────────────────────────────────────────────
-loginForm.addEventListener('submit', async (e) => {
+// ── Auth form submit (login or register) ────────────────────────────────────
+authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  loginError.classList.add('hidden');
-  loginBtn.disabled = true;
-  loginBtn.textContent = 'Signing in...';
+  authError.classList.add('hidden');
+  authBtn.disabled = true;
+
+  const originalText = authBtn.textContent;
+  authBtn.textContent = isRegisterMode ? 'Creating account...' : 'Signing in...';
 
   try {
-    await signInWithEmailAndPassword(auth, emailInput.value.trim(), passwordInput.value);
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+
+    if (isRegisterMode) {
+      await createUserWithEmailAndPassword(auth, email, password);
+    } else {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
   } catch (err) {
-    loginError.textContent = friendlyError(err.code);
-    loginError.classList.remove('hidden');
-    loginBtn.disabled = false;
-    loginBtn.textContent = 'Sign In';
+    authError.textContent = friendlyError(err.code);
+    authError.classList.remove('hidden');
+    authBtn.disabled = false;
+    authBtn.textContent = originalText;
   }
 });
 
@@ -76,8 +105,10 @@ function friendlyError(code) {
     'auth/invalid-email': 'Please enter a valid email.',
     'auth/too-many-requests': 'Too many attempts. Try again later.',
     'auth/invalid-credential': 'Invalid email or password.',
+    'auth/email-already-in-use': 'An account with this email already exists.',
+    'auth/weak-password': 'Password should be at least 6 characters.',
   };
-  return map[code] || 'Login failed. Please try again.';
+  return map[code] || 'Something went wrong. Please try again.';
 }
 
 // ── Logout ──────────────────────────────────────────────────────────────────
@@ -100,19 +131,40 @@ async function loadStats(uid) {
     const platformCarbon = {};
     let totalQueries = 0;
     let totalCarbon = 0;
+    let aiQueries = 0;
+    let aiCarbon = 0;
 
-    snapshot.forEach((doc) => {
-      const data = doc.data();
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
       const p = data.platform;
       totalQueries++;
       totalCarbon += data.carbonGrams || 0;
       platformCounts[p] = (platformCounts[p] || 0) + 1;
       platformCarbon[p] = (platformCarbon[p] || 0) + (data.carbonGrams || 0);
+
+      // Track AI-only queries (everything except Google)
+      if (p !== 'google') {
+        aiQueries++;
+        aiCarbon += data.carbonGrams || 0;
+      }
     });
 
     // Render totals
     totalQueriesEl.textContent = totalQueries.toLocaleString();
     totalCarbonEl.textContent = formatCarbon(totalCarbon);
+
+    // Comparison card: extra CO2 cost of using AI over Google Search
+    if (aiQueries > 0) {
+      const googleEquivalent = aiQueries * GOOGLE_CARBON_PER_QUERY;
+      const extraCarbon = aiCarbon - googleEquivalent;
+
+      comparisonText.innerHTML =
+        `Your <strong>${aiQueries}</strong> AI ${aiQueries === 1 ? 'query' : 'queries'} used ` +
+        `<strong>${formatCarbon(extraCarbon)}</strong> more CO&#8322; than the same number of Google searches would have.`;
+      comparisonCard.classList.remove('hidden');
+    } else {
+      comparisonCard.classList.add('hidden');
+    }
 
     // Top 2 platforms by query count
     const sorted = Object.entries(platformCounts)
@@ -126,7 +178,7 @@ async function loadStats(uid) {
         .map(
           ([platform, count], idx) => `
         <div class="platform-item">
-          <div style="display:flex;align-items:center">
+          <div class="platform-left">
             <span class="rank rank-${idx + 1}">${idx + 1}</span>
             <div class="platform-info">
               <span class="platform-name">${PLATFORM_NAMES[platform] || platform}</span>
