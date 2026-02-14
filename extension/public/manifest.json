@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "CarbonQ",
   "version": "1.0.0",
-  "description": "Track the carbon footprint of your AI queries across ChatGPT, Claude, Gemini, and Perplexity.",
+  "description": "Track the carbon footprint of your AI queries across ChatGPT, Claude, Gemini, Perplexity, and Google Search.",
   "permissions": ["storage"],
   "host_permissions": [
     "*://chatgpt.com/*",
@@ -10,7 +10,9 @@
     "*://claude.ai/*",
     "*://gemini.google.com/*",
     "*://www.perplexity.ai/*",
-    "*://perplexity.ai/*"
+    "*://perplexity.ai/*",
+    "*://www.google.com/*",
+    "*://google.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js"
@@ -36,7 +38,9 @@
         "*://claude.ai/*",
         "*://gemini.google.com/*",
         "*://www.perplexity.ai/*",
-        "*://perplexity.ai/*"
+        "*://perplexity.ai/*",
+        "*://www.google.com/*",
+        "*://google.com/*"
       ],
       "js": ["tracker.js"],
       "run_at": "document_idle"
