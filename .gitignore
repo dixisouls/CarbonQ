@@ -9,6 +9,10 @@ extension/dist/
 .env.local
 .env.*.local
 
+# Firebase service-account key (NEVER commit)
+serviceAccountKey.json
+**/serviceAccountKey*.json
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -25,3 +29,14 @@ npm-debug.log*
 
 # Package lock (optional — remove this line if you want to track it)
 extension/package-lock.json
+dashboard/package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Backend logs
+backend/logs/
