@@ -16,7 +16,15 @@ import {
   query,
   orderBy,
 } from '../lib/firebase';
-import { PLATFORM_NAMES, GOOGLE_CARBON_PER_QUERY } from '../lib/constants';
+import { PLATFORM_NAMES, CARBON_PER_QUERY, GOOGLE_CARBON_PER_QUERY } from '../lib/constants';
+
+// Average LLM emission for savings calculation
+const AVG_LLM =
+  (CARBON_PER_QUERY.chatgpt +
+    CARBON_PER_QUERY.claude +
+    CARBON_PER_QUERY.gemini +
+    CARBON_PER_QUERY.perplexity) /
+  4;
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const loadingView = document.getElementById('loading-view');
@@ -31,11 +39,12 @@ const toggleBtn = document.getElementById('toggle-btn');
 const authError = document.getElementById('auth-error');
 
 const userEmailEl = document.getElementById('user-email');
+const heroValueEl = document.getElementById('hero-value');
+const heroUnitEl = document.getElementById('hero-unit');
 const totalQueriesEl = document.getElementById('total-queries');
-const totalCarbonEl = document.getElementById('total-carbon');
-const topPlatformsEl = document.getElementById('top-platforms');
-const comparisonCard = document.getElementById('comparison-card');
-const comparisonText = document.getElementById('comparison-text');
+const breakdownListEl = document.getElementById('breakdown-list');
+const savingsCard = document.getElementById('savings-card');
+const savingsText = document.getElementById('savings-text');
 const logoutBtn = document.getElementById('logout-btn');
 const dashLoading = document.getElementById('dash-loading');
 
@@ -126,13 +135,11 @@ async function loadStats(uid) {
     const q = query(queriesRef, orderBy('timestamp', 'desc'));
     const snapshot = await getDocs(q);
 
-    // Aggregate
     const platformCounts = {};
     const platformCarbon = {};
     let totalQueries = 0;
     let totalCarbon = 0;
-    let aiQueries = 0;
-    let aiCarbon = 0;
+    let googleQueries = 0;
 
     snapshot.forEach((docSnap) => {
       const data = docSnap.data();
@@ -141,59 +148,63 @@ async function loadStats(uid) {
       totalCarbon += data.carbonGrams || 0;
       platformCounts[p] = (platformCounts[p] || 0) + 1;
       platformCarbon[p] = (platformCarbon[p] || 0) + (data.carbonGrams || 0);
-
-      // Track AI-only queries (everything except Google)
-      if (p !== 'google') {
-        aiQueries++;
-        aiCarbon += data.carbonGrams || 0;
-      }
+      if (p === 'google') googleQueries++;
     });
 
-    // Render totals
+    // Hero card
+    const heroUnit = totalCarbon >= 1000 ? 'kg' : 'g';
+    const heroVal =
+      totalCarbon >= 1000 ? (totalCarbon / 1000).toFixed(2) : totalCarbon.toFixed(1);
+    heroValueEl.textContent = heroVal;
+    heroUnitEl.textContent = `CO₂ ${heroUnit}`;
     totalQueriesEl.textContent = totalQueries.toLocaleString();
-    totalCarbonEl.textContent = formatCarbon(totalCarbon);
 
-    // Comparison card: extra CO2 cost of using AI over Google Search
-    if (aiQueries > 0) {
-      const googleEquivalent = aiQueries * GOOGLE_CARBON_PER_QUERY;
-      const extraCarbon = aiCarbon - googleEquivalent;
-
-      comparisonText.innerHTML =
-        `Your <strong>${aiQueries}</strong> AI ${aiQueries === 1 ? 'query' : 'queries'} used ` +
-        `<strong>${formatCarbon(extraCarbon)}</strong> more CO&#8322; than the same number of Google searches would have.`;
-      comparisonCard.classList.remove('hidden');
+    // Green savings card (only when user has Google searches)
+    if (googleQueries > 0) {
+      const googleSaved = googleQueries * (AVG_LLM - GOOGLE_CARBON_PER_QUERY);
+      savingsText.innerHTML =
+        `Your <strong>${googleQueries}</strong> Google search${googleQueries > 1 ? 'es' : ''} ` +
+        `saved an estimated <strong>${formatCarbon(googleSaved)} CO₂</strong> compared to using an LLM.`;
+      savingsCard.classList.remove('hidden');
     } else {
-      comparisonCard.classList.add('hidden');
+      savingsCard.classList.add('hidden');
     }
 
-    // Top 2 platforms by query count
-    const sorted = Object.entries(platformCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 2);
+    // Breakdown by Service — all platforms, Google shown distinctly
+    const platforms = [
+      { key: 'chatgpt', dot: 'chatgpt' },
+      { key: 'claude', dot: 'claude' },
+      { key: 'gemini', dot: 'gemini' },
+      { key: 'perplexity', dot: 'perplexity' },
+      { key: 'google', dot: 'google' },
+    ];
 
-    if (sorted.length === 0) {
-      topPlatformsEl.innerHTML = '<p class="muted">No queries tracked yet. Start chatting!</p>';
+    if (totalQueries === 0) {
+      breakdownListEl.innerHTML =
+        '<p class="muted">No queries tracked yet. Use ChatGPT, Claude, Gemini, Perplexity, or Google Search and your carbon footprint will appear here.</p>';
     } else {
-      topPlatformsEl.innerHTML = sorted
-        .map(
-          ([platform, count], idx) => `
-        <div class="platform-item">
-          <div class="platform-left">
-            <span class="rank rank-${idx + 1}">${idx + 1}</span>
-            <div class="platform-info">
-              <span class="platform-name">${PLATFORM_NAMES[platform] || platform}</span>
-              <span class="platform-queries">${count} ${count === 1 ? 'query' : 'queries'}</span>
+      breakdownListEl.innerHTML = platforms
+        .map(({ key, dot }) => {
+          const data = { queries: platformCounts[key] || 0, emission: platformCarbon[key] || 0 };
+          if (data.queries === 0) return '';
+          const rowClass = key === 'google' ? 'site-row google-row' : 'site-row';
+          return `
+            <div class="${rowClass}">
+              <div class="site-dot ${dot}"></div>
+              <div class="site-name">${PLATFORM_NAMES[key] || key}</div>
+              <div class="site-stats">
+                <div class="site-queries">${data.queries}</div>
+                <div class="site-emission">${formatCarbon(data.emission)} CO₂</div>
+              </div>
             </div>
-          </div>
-          <span class="platform-carbon">${formatCarbon(platformCarbon[platform] || 0)}</span>
-        </div>
-      `
-        )
+          `;
+        })
+        .filter(Boolean)
         .join('');
     }
   } catch (err) {
     console.error('[CarbonQ] Failed to load stats:', err);
-    topPlatformsEl.innerHTML = '<p class="muted">Failed to load data.</p>';
+    breakdownListEl.innerHTML = '<p class="muted">Failed to load data.</p>';
   }
 
   dashLoading.classList.add('hidden');
@@ -204,5 +215,5 @@ function formatCarbon(grams) {
   if (grams >= 1000) {
     return (grams / 1000).toFixed(2) + ' kg';
   }
-  return grams.toFixed(1) + ' g';
+  return grams.toFixed(2) + ' g';
 }

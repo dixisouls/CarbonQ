@@ -51,34 +51,25 @@
         </button>
       </header>
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <span class="stat-label">Total Queries</span>
-          <span class="stat-value" id="total-queries">--</span>
-        </div>
-        <div class="stat-card accent">
-          <span class="stat-label">CO&#8322; Emitted</span>
-          <span class="stat-value" id="total-carbon">--</span>
-        </div>
+      <!-- Hero card -->
+      <div id="hero-card" class="hero-card">
+        <div class="hero-label">Total Estimated Emissions</div>
+        <div class="hero-value"><span id="hero-value">--</span><span class="unit" id="hero-unit">g</span></div>
+        <div class="hero-sub">Across <strong id="total-queries">0</strong> total queries</div>
       </div>
 
-      <!-- Comparison card -->
-      <div id="comparison-card" class="comparison-card hidden">
-        <div class="comparison-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </div>
-        <div class="comparison-text" id="comparison-text"></div>
-      </div>
-
-      <div class="section">
-        <h3>Top Platforms</h3>
-        <div id="top-platforms" class="platform-list">
+      <!-- Breakdown by Service -->
+      <div class="breakdown">
+        <div class="section-label">Breakdown by Service</div>
+        <div id="breakdown-list" class="breakdown-list">
           <p class="muted">Loading...</p>
         </div>
+      </div>
+
+      <!-- Green savings card (only when Google searches exist) -->
+      <div id="savings-card" class="savings-card hidden">
+        <div class="savings-icon">&#127807;</div>
+        <div class="savings-text" id="savings-text"></div>
       </div>
 
       <div id="dash-loading" class="dash-loading hidden">
