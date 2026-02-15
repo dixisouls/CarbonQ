@@ -8,16 +8,10 @@ const api = axios.create({
   withCredentials: true, // Send cookies with requests
 });
 
-// Simple 401 error handler - redirect to login
+// Pass through all responses and errors
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      // Session expired or invalid, redirect to login
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 export const authAPI = {
