@@ -32,6 +32,7 @@ export const dashboardAPI = {
   platforms: () => api.get('/dashboard/platforms'),
   recent: (limit = 15) => api.get(`/dashboard/recent?limit=${limit}`),
   weekly: () => api.get('/dashboard/weekly'),
+  googleSearchComparison: () => api.get('/dashboard/google-search-comparison'),
 };
 
 export default api;
