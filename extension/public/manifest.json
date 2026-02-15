@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Track the carbon footprint of your AI queries across ChatGPT, Claude, Gemini, Perplexity, and Google Search.",
   "permissions": ["storage"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxK9h+BXxVPdJjHgE/vfQjDzIuwSlDmcLToo3zwJx1WFiHWm5+/7XHVwqaDp3QD4wdRVthnPMewPtHbAKDRvooOECLvrgiso5E2KMHwN4KAof3U1A3L4H4/St9n7yLY+EMjqCmfjvpxRFWmnAoxAbXwG9HAxAglGrea/7iL7+Nx3ZNtbrrDng7NQjziwqEwcg4X38oB4s/BSgceNelhAocLJ7QeL3y0K0bY+3SutPRwV+WlU5znDhhDRYg/P9KXbKRJH88YfvvbvBRpJHgqcuFFVWgqFmhZstuSN1ECKuLPagdwYIkRFf+v9rmf0TUqCxo1OKycVxBMH4G3PY4FSKLwIDAQAB",
   "host_permissions": [
     "https://carbonq-6daabbfaae93.herokuapp.com/*",
     "http://localhost:8000/*",
