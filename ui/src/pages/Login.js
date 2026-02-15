@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Leaf, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import './Login.css';
 
 export default function Login() {
-  const { login, register } = useAuth();
-  const [isRegister, setIsRegister] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,11 +19,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      if (isRegister) {
-        await register(email, password);
-      } else {
-        await login(email, password);
-      }
+      await login(email, password);
     } catch (err) {
       const msg = err.response?.data?.detail || 'Something went wrong';
       setError(msg);
@@ -67,9 +64,8 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              autoComplete={isRegister ? 'new-password' : 'current-password'}
+              autoComplete="current-password"
               className="login-input"
-              minLength={6}
             />
             <button
               type="button"
@@ -96,7 +92,7 @@ export default function Login() {
               <div className="login-spinner" />
             ) : (
               <>
-                {isRegister ? 'Create Account' : 'Sign In'}
+                Sign In
                 <ArrowRight size={18} />
               </>
             )}
@@ -104,14 +100,9 @@ export default function Login() {
         </form>
 
         <div className="login-switch">
-          <span className="login-switch-text">
-            {isRegister ? 'Already have an account?' : "Don't have an account?"}
-          </span>
-          <button
-            className="login-switch-btn"
-            onClick={() => { setIsRegister(!isRegister); setError(''); }}
-          >
-            {isRegister ? 'Sign In' : 'Create one'}
+          <span className="login-switch-text">Don't have an account?</span>
+          <button className="login-switch-btn" onClick={() => navigate('/register')}>
+            Create one
           </button>
         </div>
       </div>
