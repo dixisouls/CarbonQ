@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.config import get_settings
-from app.firebase import get_firebase_app, get_firestore_client
+from app.database import get_database, get_queries_collection, get_users_collection
 from app.logging_config import setup_logging
 from app.routers import auth, dashboard
 from app.schemas.common import HealthResponse
@@ -59,22 +59,34 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-# ── Startup — eagerly initialise singletons ─────────────────────────────
+# ── Startup — eagerly initialise MongoDB and create indexes ─────────────
 
 
 @app.on_event("startup")
 async def on_startup():
     logger.info("Starting {} …", settings.app_name)
     try:
-        get_firebase_app()
-        get_firestore_client()
-        logger.info("Firebase singletons initialised successfully")
+        # Connect to MongoDB
+        db = get_database()
+        logger.info("MongoDB connection established")
+
+        # Create indexes
+        users_collection = get_users_collection()
+        queries_collection = get_queries_collection()
+
+        # Email index (unique) for users
+        users_collection.create_index("email", unique=True)
+        logger.info("Created unique index on users.email")
+
+        # Compound index for queries: user_id + timestamp (for efficient queries)
+        queries_collection.create_index([("user_id", 1), ("timestamp", -1)])
+        logger.info("Created compound index on queries (user_id, timestamp)")
+
+        logger.info("MongoDB initialized successfully")
     except Exception as exc:
-        logger.error("Firebase initialisation failed: {}", exc)
+        logger.error("MongoDB initialization failed: {}", exc)
         logger.warning(
-            "Make sure the service-account key exists at '{}' "
-            "or set GOOGLE_APPLICATION_CREDENTIALS.",
-            settings.firebase_service_account_path,
+            "Make sure MongoDB URI is correctly set in environment: MONGODB_URI"
         )
 
 

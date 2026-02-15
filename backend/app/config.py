@@ -15,18 +15,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Centralised configuration loaded from the .env at the project root."""
 
-    # ── Firebase ────────────────────────────────────────────────────────
-    firebase_api_key: str
-    firebase_auth_domain: str
-    firebase_project_id: str
-    firebase_storage_bucket: str
-    firebase_messaging_sender_id: str
-    firebase_app_id: str
-    firebase_measurement_id: str
+    # ── MongoDB ─────────────────────────────────────────────────────────
+    mongodb_uri: str
+    mongodb_database_name: str = "carbonq"
 
-    # Path to the Firebase service-account JSON (for firebase-admin).
-    # Download from: Firebase Console → Project Settings → Service Accounts
-    firebase_service_account_path: str = "serviceAccountKey.json"
+    # ── Sessions ────────────────────────────────────────────────────────
+    session_secret_key: str
+    session_expire_hours: int = 24
 
     # ── App ─────────────────────────────────────────────────────────────
     app_name: str = "CarbonQ API"
@@ -37,10 +32,6 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:3000",
     ]
-
-    # ── Firebase Auth REST base URL ─────────────────────────────────────
-    firebase_auth_base: str = "https://identitytoolkit.googleapis.com/v1"
-    firebase_token_base: str = "https://securetoken.googleapis.com/v1"
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).resolve().parent.parent.parent / ".env"),

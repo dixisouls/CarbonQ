@@ -11,7 +11,7 @@ from __future__ import annotations
 from app.schemas.auth import (
     AuthRequest,
     AuthResponse,
-    RefreshRequest,
+    MessageResponse,
     UserResponse,
 )
 from app.schemas.common import HealthResponse
@@ -29,10 +29,10 @@ __all__ = [
     "AuthResponse",
     "DayData",
     "HealthResponse",
+    "MessageResponse",
     "PlatformStat",
     "RecentQuery",
     "RecentResponse",
-    "RefreshRequest",
     "StatsResponse",
     "UserResponse",
     "WeeklyResponse",

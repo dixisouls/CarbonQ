@@ -1,147 +1,161 @@
 """
-Authentication router — register, login, token refresh, current user.
+Authentication router — register, login, logout, current user.
 
-Uses the Firebase Auth REST API for client-facing operations (sign-up,
-sign-in, token refresh) and firebase-admin for server-side token
-verification.
+Uses MongoDB for user storage and session-based authentication with
+secure httpOnly cookies.
 """
 
 from __future__ import annotations
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from loguru import logger
 
 from app.config import get_settings
+from app.database import get_users_collection
 from app.dependencies import get_current_user
-from app.firebase import get_firebase_auth, get_firestore_client
-from app.schemas.auth import AuthRequest, AuthResponse, RefreshRequest, UserResponse
-from google.cloud.firestore_v1 import SERVER_TIMESTAMP
+from app.models.user import User
+from app.schemas.auth import AuthRequest, AuthResponse, MessageResponse, UserResponse
+from app.utils import create_session, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# ── Helpers ─────────────────────────────────────────────────────────────
-
-
-async def _firebase_auth_request(endpoint: str, payload: dict) -> dict:
-    """Call a Firebase Auth REST endpoint and return the JSON body."""
-    settings = get_settings()
-    url = f"{settings.firebase_auth_base}/{endpoint}?key={settings.firebase_api_key}"
-
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(url, json=payload)
-
-    if resp.status_code != 200:
-        body = resp.json()
-        error_msg = body.get("error", {}).get("message", "Authentication failed")
-        logger.warning("Firebase Auth REST error: {} — {}", resp.status_code, error_msg)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=_friendly_error(error_msg),
-        )
-    return resp.json()
-
-
-def _friendly_error(code: str) -> str:
-    messages = {
-        "EMAIL_EXISTS": "An account with this email already exists.",
-        "EMAIL_NOT_FOUND": "No account found with this email.",
-        "INVALID_PASSWORD": "Incorrect password.",
-        "INVALID_EMAIL": "Please enter a valid email address.",
-        "WEAK_PASSWORD": "Password should be at least 6 characters.",
-        "TOO_MANY_ATTEMPTS_TRY_LATER": "Too many attempts. Please try again later.",
-        "INVALID_LOGIN_CREDENTIALS": "Invalid email or password.",
-        "USER_DISABLED": "This account has been disabled.",
-    }
-    return messages.get(code, f"Authentication error: {code}")
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: AuthRequest):
-    """Create a new user account and return tokens."""
+async def register(body: AuthRequest, response: Response):
+    """Create a new user account and return session cookie."""
     logger.info("Register attempt: {}", body.email)
 
-    data = await _firebase_auth_request(
-        "accounts:signUp",
-        {"email": body.email, "password": body.password, "returnSecureToken": True},
+    users_collection = get_users_collection()
+
+    # Check if user already exists
+    existing_user = users_collection.find_one({"email": body.email})
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this email already exists.",
+        )
+
+    # Hash password
+    password_hash = hash_password(body.password)
+
+    # Create user document
+    now = datetime.utcnow()
+    user_doc = {
+        "email": body.email,
+        "password_hash": password_hash,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    result = users_collection.insert_one(user_doc)
+    user_id = str(result.inserted_id)
+
+    logger.info("User created: {} ({})", body.email, user_id)
+
+    # Create session token
+    session_token = create_session(user_id)
+
+    # Set secure cookie
+    settings = get_settings()
+    response.set_cookie(
+        key="session",
+        value=session_token,
+        httponly=True,
+        secure=not settings.debug,  # Use secure cookies in production
+        samesite="lax",
+        max_age=settings.session_expire_hours * 3600,
     )
 
-    uid = data["localId"]
-
-    # Create user document in Firestore
-    try:
-        db = get_firestore_client()
-        db.collection("users").document(uid).set(
-            {"email": body.email, "createdAt": SERVER_TIMESTAMP},
-            merge=True,
-        )
-        logger.info("User document created for {}", uid)
-    except Exception as exc:
-        logger.error("Failed to create user document: {}", exc)
+    # Return user info
+    user_doc["_id"] = result.inserted_id
+    user = User.from_db(user_doc)
 
     return AuthResponse(
-        id_token=data["idToken"],
-        refresh_token=data["refreshToken"],
-        uid=uid,
-        email=data["email"],
-        expires_in=data.get("expiresIn", "3600"),
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )
     )
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(body: AuthRequest):
-    """Sign in with email & password and return tokens."""
+async def login(body: AuthRequest, response: Response):
+    """Sign in with email & password and return session cookie."""
     logger.info("Login attempt: {}", body.email)
 
-    data = await _firebase_auth_request(
-        "accounts:signInWithPassword",
-        {"email": body.email, "password": body.password, "returnSecureToken": True},
-    )
+    users_collection = get_users_collection()
 
-    return AuthResponse(
-        id_token=data["idToken"],
-        refresh_token=data["refreshToken"],
-        uid=data["localId"],
-        email=data["email"],
-        expires_in=data.get("expiresIn", "3600"),
-    )
-
-
-@router.post("/refresh", response_model=AuthResponse)
-async def refresh_token(body: RefreshRequest):
-    """Exchange a refresh token for a new ID token."""
-    settings = get_settings()
-    url = f"{settings.firebase_token_base}/token?key={settings.firebase_api_key}"
-
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(
-            url,
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": body.refresh_token,
-            },
-        )
-
-    if resp.status_code != 200:
+    # Find user by email
+    user_doc = users_collection.find_one({"email": body.email})
+    if not user_doc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Failed to refresh token. Please sign in again.",
+            detail="Invalid email or password.",
         )
 
-    data = resp.json()
-    return AuthResponse(
-        id_token=data["id_token"],
-        refresh_token=data["refresh_token"],
-        uid=data["user_id"],
-        email=data.get("email", ""),
-        expires_in=data.get("expires_in", "3600"),
+    # Verify password
+    if not verify_password(body.password, user_doc["password_hash"]):
+        logger.warning("Failed login attempt for {}", body.email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+
+    user_id = str(user_doc["_id"])
+    logger.info("User logged in: {} ({})", body.email, user_id)
+
+    # Create session token
+    session_token = create_session(user_id)
+
+    # Set secure cookie
+    settings = get_settings()
+    response.set_cookie(
+        key="session",
+        value=session_token,
+        httponly=True,
+        secure=not settings.debug,
+        samesite="lax",
+        max_age=settings.session_expire_hours * 3600,
     )
+
+    # Return user info
+    user = User.from_db(user_doc)
+
+    return AuthResponse(
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )
+    )
+
+
+@router.post("/logout", response_model=MessageResponse)
+async def logout(response: Response):
+    """Clear session cookie and log out."""
+    logger.info("User logout")
+
+    # Clear session cookie
+    response.delete_cookie(key="session")
+
+    return MessageResponse(message="Logged out successfully")
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: dict = Depends(get_current_user)):
+async def me(user: User = Depends(get_current_user)):
     """Return the currently authenticated user's info."""
-    return UserResponse(uid=user["uid"], email=user.get("email"))
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+    )
