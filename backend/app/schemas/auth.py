@@ -4,26 +4,40 @@ Auth schemas — request/response models for authentication endpoints.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr
+from datetime import datetime
+
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class AuthRequest(BaseModel):
     email: EmailStr
     password: str
 
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        """Validate password strength."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
 
 
 class AuthResponse(BaseModel):
-    id_token: str
-    refresh_token: str
-    uid: str
-    email: str
-    expires_in: str
+    user: UserResponse
 
 
 class UserResponse(BaseModel):
-    uid: str
-    email: str | None = None
+    id: str
+    email: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class MessageResponse(BaseModel):
+    message: str

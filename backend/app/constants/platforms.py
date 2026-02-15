@@ -9,6 +9,7 @@ PLATFORM_NAMES: dict[str, str] = {
     "claude": "Claude",
     "perplexity": "Perplexity",
     "chatgpt": "ChatGPT",
+    "google_search": "Google Search",
 }
 
 CARBON_PER_QUERY: dict[str, float] = {
@@ -16,6 +17,7 @@ CARBON_PER_QUERY: dict[str, float] = {
     "claude": 3.5,
     "perplexity": 4.0,
     "chatgpt": 4.4,
+    "google_search": 0.2,
 }
 
 PLATFORM_COLORS: dict[str, str] = {
@@ -23,6 +25,7 @@ PLATFORM_COLORS: dict[str, str] = {
     "claude": "#f59e0b",
     "gemini": "#3b82f6",
     "perplexity": "#8b5cf6",
+    "google_search": "#64748b",
 }
 
 PLATFORM_ICONS: dict[str, str] = {
@@ -30,4 +33,5 @@ PLATFORM_ICONS: dict[str, str] = {
     "claude": "🧠",
     "gemini": "✨",
     "perplexity": "🔍",
+    "google_search": "🔎",
 }

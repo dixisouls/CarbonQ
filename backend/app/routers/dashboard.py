@@ -2,7 +2,7 @@
 Dashboard router — aggregated stats, platform breakdown, recent queries,
 and 7-day time-series data.
 
-All endpoints require a valid Firebase ID-token.
+All endpoints require a valid session cookie.
 """
 
 from __future__ import annotations
@@ -11,13 +11,14 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from google.cloud.firestore_v1.base_query import FieldFilter
+from bson import ObjectId
+from fastapi import APIRouter, Depends, Query, status
 from loguru import logger
 
 from app.constants.platforms import PLATFORM_COLORS, PLATFORM_ICONS, PLATFORM_NAMES
+from app.database import get_queries_collection
 from app.dependencies import get_current_user
-from app.firebase import get_firestore_client
+from app.models.user import User
 from app.schemas.dashboard import (
     DayData,
     PlatformStat,
@@ -33,24 +34,22 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 # ── Internal helpers ────────────────────────────────────────────────────
 
 
-def _fetch_all_queries(uid: str) -> list[dict]:
-    """Synchronously fetch all queries for a user from Firestore."""
-    db = get_firestore_client()
-    ref = db.collection("users").document(uid).collection("queries")
-    docs = ref.order_by("timestamp", direction="DESCENDING").stream()
-    return [{"id": d.id, **d.to_dict()} for d in docs]
+def _fetch_all_queries(user_id: str) -> list[dict]:
+    """Synchronously fetch all queries for a user from MongoDB."""
+    collection = get_queries_collection()
+    queries = collection.find(
+        {"user_id": ObjectId(user_id)}
+    ).sort("timestamp", -1)
+    return [{"id": str(q["_id"]), **q} for q in queries]
 
 
-def _fetch_queries_since(uid: str, since: datetime) -> list[dict]:
+def _fetch_queries_since(user_id: str, since: datetime) -> list[dict]:
     """Synchronously fetch queries newer than *since* for a user."""
-    db = get_firestore_client()
-    ref = db.collection("users").document(uid).collection("queries")
-    q = (
-        ref.where(filter=FieldFilter("timestamp", ">=", since))
-        .order_by("timestamp", direction="DESCENDING")
-    )
-    docs = q.stream()
-    return [{"id": d.id, **d.to_dict()} for d in docs]
+    collection = get_queries_collection()
+    queries = collection.find(
+        {"user_id": ObjectId(user_id), "timestamp": {"$gte": since}}
+    ).sort("timestamp", -1)
+    return [{"id": str(q["_id"]), **q} for q in queries]
 
 
 def _aggregate(queries: list[dict]) -> dict[str, Any]:
@@ -62,7 +61,7 @@ def _aggregate(queries: list[dict]) -> dict[str, Any]:
 
     for q in queries:
         p = q.get("platform", "unknown")
-        cg = q.get("carbonGrams", 0.0)
+        cg = q.get("carbon_grams", 0.0)  # Updated field name
         total_queries += 1
         total_carbon += cg
         platform_counts[p] = platform_counts.get(p, 0) + 1
@@ -129,34 +128,31 @@ def _detect_trend(smoothed: list[float], threshold_g: float = 1.0) -> str:
 
 
 @router.get("/stats", response_model=StatsResponse)
-async def get_stats(user: dict = Depends(get_current_user)):
+async def get_stats(user: User = Depends(get_current_user)):
     """Return overall aggregated statistics."""
-    uid = user["uid"]
-    logger.info("Fetching stats for user {}", uid)
+    logger.info("Fetching stats for user {}", user.id)
 
-    queries = await asyncio.to_thread(_fetch_all_queries, uid)
+    queries = await asyncio.to_thread(_fetch_all_queries, user.id)
     return _aggregate(queries)
 
 
 @router.get("/platforms", response_model=list[PlatformStat])
-async def get_platforms(user: dict = Depends(get_current_user)):
+async def get_platforms(user: User = Depends(get_current_user)):
     """Return per-platform breakdown sorted by query count."""
-    uid = user["uid"]
-    queries = await asyncio.to_thread(_fetch_all_queries, uid)
+    queries = await asyncio.to_thread(_fetch_all_queries, user.id)
     agg = _aggregate(queries)
     return agg["platforms"]
 
 
 @router.get("/recent", response_model=RecentResponse)
 async def get_recent(
-    user: dict = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     limit: int = Query(default=15, ge=1, le=100),
 ):
     """Return the most recent queries (default 15)."""
-    uid = user["uid"]
-    logger.info("Fetching {} recent queries for user {}", limit, uid)
+    logger.info("Fetching {} recent queries for user {}", limit, user.id)
 
-    all_queries = await asyncio.to_thread(_fetch_all_queries, uid)
+    all_queries = await asyncio.to_thread(_fetch_all_queries, user.id)
     recent = all_queries[:limit]
 
     items = []
@@ -171,7 +167,7 @@ async def get_recent(
                 id=q["id"],
                 platform=q.get("platform", "unknown"),
                 platform_name=PLATFORM_NAMES.get(q.get("platform", ""), q.get("platform", "unknown")),
-                carbon_grams=round(q.get("carbonGrams", 0.0), 2),
+                carbon_grams=round(q.get("carbon_grams", 0.0), 2),  # Updated field name
                 timestamp=ts_str,
             )
         )
@@ -180,22 +176,21 @@ async def get_recent(
 
 
 @router.get("/weekly", response_model=WeeklyResponse)
-async def get_weekly(user: dict = Depends(get_current_user)):
+async def get_weekly(user: User = Depends(get_current_user)):
     """
     Return per-day aggregated data for the last 7 days.
 
     Each day includes the count of queries and total carbon emitted.
     Days with no activity are included with zero values.
     """
-    uid = user["uid"]
     now = datetime.now(timezone.utc)
     seven_days_ago = now - timedelta(days=6)
     # Start of that day
     start = seven_days_ago.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    logger.info("Fetching weekly data for user {} (since {})", uid, start.isoformat())
+    logger.info("Fetching weekly data for user {} (since {})", user.id, start.isoformat())
 
-    queries = await asyncio.to_thread(_fetch_queries_since, uid, start)
+    queries = await asyncio.to_thread(_fetch_queries_since, user.id, start)
 
     # Group by date
     daily: dict[str, dict] = {}
@@ -211,7 +206,7 @@ async def get_weekly(user: dict = Depends(get_current_user)):
         if day_key not in daily:
             daily[day_key] = {"queries": 0, "carbon": 0.0}
         daily[day_key]["queries"] += 1
-        daily[day_key]["carbon"] += q.get("carbonGrams", 0.0)
+        daily[day_key]["carbon"] += q.get("carbon_grams", 0.0)  # Updated field name
 
     # Build complete 7-day array (oldest → newest)
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -238,21 +233,20 @@ async def get_weekly(user: dict = Depends(get_current_user)):
 
 
 @router.get("/trend", response_model=TrendResponse)
-async def get_trend(user: dict = Depends(get_current_user)):
+async def get_trend(user: User = Depends(get_current_user)):
     """
     Predict upcoming trend and estimated total emission for next week.
 
     Uses 7–14 days of emission data with exponential smoothing (alpha=0.35).
     Returns trend direction, estimated total for next 7 days, and metadata.
     """
-    uid = user["uid"]
     now = datetime.now(timezone.utc)
     fourteen_days_ago = now - timedelta(days=13)
     start = fourteen_days_ago.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    logger.info("Fetching trend data for user {} (since {})", uid, start.isoformat())
+    logger.info("Fetching trend data for user {} (since {})", user.id, start.isoformat())
 
-    queries = await asyncio.to_thread(_fetch_queries_since, uid, start)
+    queries = await asyncio.to_thread(_fetch_queries_since, user.id, start)
 
     # Group by date
     daily: dict[str, float] = {}
@@ -261,7 +255,7 @@ async def get_trend(user: dict = Depends(get_current_user)):
         if ts is None or not hasattr(ts, "date"):
             continue
         day_key = ts.strftime("%Y-%m-%d")
-        daily[day_key] = daily.get(day_key, 0.0) + q.get("carbonGrams", 0.0)
+        daily[day_key] = daily.get(day_key, 0.0) + q.get("carbon_grams", 0.0)  # Updated field name
 
     # Build 14-day carbon series (oldest → newest)
     carbon_series: list[float] = []
@@ -297,3 +291,26 @@ async def get_trend(user: dict = Depends(get_current_user)):
         days_used=14,
         sufficient_data=True,
     )
+
+
+@router.post("/query", status_code=status.HTTP_201_CREATED)
+async def submit_query(
+    platform: str,
+    carbon_grams: float,
+    user: User = Depends(get_current_user),
+):
+    """Submit a new query from the browser extension."""
+    logger.info("Submitting query for user {}: {} ({}g CO2)", user.id, platform, carbon_grams)
+
+    collection = get_queries_collection()
+    query_doc = {
+        "user_id": ObjectId(user.id),
+        "platform": platform,
+        "carbon_grams": carbon_grams,
+        "timestamp": datetime.utcnow(),
+    }
+
+    result = collection.insert_one(query_doc)
+    logger.info("Query submitted: {}", result.inserted_id)
+
+    return {"id": str(result.inserted_id), "message": "Query submitted successfully"}
