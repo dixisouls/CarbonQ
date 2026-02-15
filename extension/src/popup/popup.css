@@ -170,6 +170,12 @@ body {
   margin-top: 10px;
 }
 
+a.btn-ghost {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
 .btn-ghost:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #e6edf3;
