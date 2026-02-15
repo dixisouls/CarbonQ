@@ -1,64 +1,40 @@
 /**
  * CarbonQ Background Service Worker
  * Receives QUERY_SUBMITTED messages from content scripts and writes them to
- * Firestore under the authenticated user's document.
+ * the backend API.
  * Queues events in chrome.storage.local when the user is not logged in and
  * flushes the queue once they authenticate.
  */
 
-import {
-  auth,
-  db,
-  onAuthStateChanged,
-  collection,
-  addDoc,
-  doc,
-  setDoc,
-  getDocs,
-  serverTimestamp,
-} from '../lib/firebase';
+import { dashboardAPI, isLoggedIn } from '../lib/api';
 import { CARBON_PER_QUERY } from '../lib/constants';
 
-// ── State ───────────────────────────────────────────────────────────────────
-let currentUser = null;
-
-// ── Auth listener ───────────────────────────────────────────────────────────
-onAuthStateChanged(auth, async (user) => {
-  currentUser = user;
-  if (user) {
-    // Ensure user document exists
-    try {
-      await setDoc(
-        doc(db, 'users', user.uid),
-        { email: user.email, createdAt: serverTimestamp() },
-        { merge: true }
-      );
-    } catch (err) {
-      console.error('[CarbonQ] Failed to create user doc:', err);
-    }
-
+// ── Check auth state on startup ─────────────────────────────────────────────
+(async function checkAuth() {
+  const loggedIn = await isLoggedIn();
+  if (loggedIn) {
     // Flush any queued events
     await flushQueue();
   }
-});
+})();
 
 // ── Message listener ────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'QUERY_SUBMITTED') {
-    handleQuerySubmitted(message.platform);
-    sendResponse({ ok: true });
+    handleQuerySubmitted(message.platform).then(() => {
+      sendResponse({ ok: true });
+    });
+    return true; // Async response
   }
 
   if (message.type === 'GET_AUTH_STATE') {
-    sendResponse({
-      loggedIn: !!currentUser,
-      email: currentUser?.email || null,
-      uid: currentUser?.uid || null,
+    isLoggedIn().then((loggedIn) => {
+      sendResponse({ loggedIn });
     });
+    return true; // Async response
   }
 
-  // Return true to indicate we may respond asynchronously
-  return true;
+  return false;
 });
 
 // ── Core: persist a query event ─────────────────────────────────────────────
@@ -75,24 +51,20 @@ async function handleQuerySubmitted(platform) {
     timestamp: Date.now(),
   };
 
-  if (currentUser) {
-    await writeToFirestore(currentUser.uid, event);
+  const loggedIn = await isLoggedIn();
+  if (loggedIn) {
+    await writeToAPI(event);
   } else {
     await enqueue(event);
   }
 }
 
-// ── Firestore write ─────────────────────────────────────────────────────────
-async function writeToFirestore(uid, event) {
+// ── API write ───────────────────────────────────────────────────────────────
+async function writeToAPI(event) {
   try {
-    const queriesRef = collection(db, 'users', uid, 'queries');
-    await addDoc(queriesRef, {
-      platform: event.platform,
-      carbonGrams: event.carbonGrams,
-      timestamp: serverTimestamp(),
-    });
+    await dashboardAPI.submitQuery(event.platform, event.carbonGrams);
   } catch (err) {
-    console.error('[CarbonQ] Firestore write failed, queuing event:', err);
+    console.error('[CarbonQ] API write failed, queuing event:', err);
     await enqueue(event);
   }
 }
@@ -105,7 +77,8 @@ async function enqueue(event) {
 }
 
 async function flushQueue() {
-  if (!currentUser) return;
+  const loggedIn = await isLoggedIn();
+  if (!loggedIn) return;
 
   const { carbonq_queue = [] } = await chrome.storage.local.get('carbonq_queue');
   if (carbonq_queue.length === 0) return;
@@ -113,7 +86,7 @@ async function flushQueue() {
   const remaining = [];
   for (const event of carbonq_queue) {
     try {
-      await writeToFirestoreDirect(currentUser.uid, event);
+      await writeToAPIDirect(event);
     } catch {
       remaining.push(event);
     }
@@ -123,11 +96,6 @@ async function flushQueue() {
 }
 
 // Direct write (does not re-queue on failure to avoid infinite loops)
-async function writeToFirestoreDirect(uid, event) {
-  const queriesRef = collection(db, 'users', uid, 'queries');
-  await addDoc(queriesRef, {
-    platform: event.platform,
-    carbonGrams: event.carbonGrams,
-    timestamp: serverTimestamp(),
-  });
+async function writeToAPIDirect(event) {
+  await dashboardAPI.submitQuery(event.platform, event.carbonGrams);
 }
