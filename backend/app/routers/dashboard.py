@@ -21,6 +21,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.dashboard import (
     DayData,
+    GoogleSearchComparisonResponse,
     PlatformStat,
     RecentQuery,
     RecentResponse,
@@ -122,6 +123,45 @@ def _detect_trend(smoothed: list[float], threshold_g: float = 1.0) -> str:
     if diff < -threshold_g:
         return "down"
     return "stable"
+
+
+def _calculate_google_search_comparison(queries: list[dict]) -> dict[str, Any]:
+    """
+    Calculate emissions comparison: actual LLM vs 35% replaced with Google.
+
+    Excludes google_search platform queries.
+    Returns actual emission, forecasted emission, and comparison metrics.
+    """
+    # Filter out google_search queries
+    llm_queries = [q for q in queries if q.get("platform") != "google_search"]
+
+    if not llm_queries:
+        return {
+            "actual_emission": 0.0,
+            "forecasted_emission": 0.0,
+            "times_more": 0.0,
+            "total_llm_queries": 0,
+        }
+
+    # Calculate actual emission
+    actual_emission = sum(q.get("carbon_grams", 0.0) for q in llm_queries)
+
+    # Calculate forecasted emission (35% as Google search)
+    num_queries = len(llm_queries)
+    google_search_emission_per_query = 0.2  # From CARBON_PER_QUERY
+
+    # 65% remain as LLM, 35% become Google searches
+    forecasted_emission = (0.65 * actual_emission) + (0.35 * num_queries * google_search_emission_per_query)
+
+    # Calculate multiplier
+    times_more = actual_emission / forecasted_emission if forecasted_emission > 0 else 0.0
+
+    return {
+        "actual_emission": round(actual_emission, 2),
+        "forecasted_emission": round(forecasted_emission, 2),
+        "times_more": round(times_more, 2),
+        "total_llm_queries": num_queries,
+    }
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────
@@ -288,6 +328,56 @@ async def get_trend(user: User = Depends(get_current_user)):
         trend=trend,
         estimated_total_next_week=round(estimated_total, 2),
         last_smoothed_value=round(last_smoothed, 2),
+        days_used=14,
+        sufficient_data=True,
+    )
+
+
+@router.get("/google-search-comparison", response_model=GoogleSearchComparisonResponse)
+async def get_google_search_comparison(user: User = Depends(get_current_user)):
+    """
+    Compare actual LLM emissions vs forecasted if 35% were Google searches.
+
+    Uses 7-14 days of historical data, excludes google_search platform.
+    Returns actual emission, forecasted emission, and times_more multiplier.
+    """
+    now = datetime.now(timezone.utc)
+    fourteen_days_ago = now - timedelta(days=13)
+    start = fourteen_days_ago.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    logger.info("Fetching Google Search comparison for user {} (since {})", user.id, start.isoformat())
+
+    queries = await asyncio.to_thread(_fetch_queries_since, user.id, start)
+
+    # Check if we have sufficient data (at least 7 days with activity)
+    # Similar logic to /trend endpoint
+    daily_activity = {}
+    for q in queries:
+        ts = q.get("timestamp")
+        if ts and hasattr(ts, "date"):
+            day_key = ts.strftime("%Y-%m-%d")
+            daily_activity[day_key] = True
+
+    days_with_data = len(daily_activity)
+    sufficient_data = days_with_data >= 7
+
+    if not sufficient_data:
+        return GoogleSearchComparisonResponse(
+            actual_emission=0.0,
+            forecasted_emission=0.0,
+            times_more=0.0,
+            total_llm_queries=0,
+            days_used=days_with_data,
+            sufficient_data=False,
+        )
+
+    comparison = _calculate_google_search_comparison(queries)
+
+    return GoogleSearchComparisonResponse(
+        actual_emission=comparison["actual_emission"],
+        forecasted_emission=comparison["forecasted_emission"],
+        times_more=comparison["times_more"],
+        total_llm_queries=comparison["total_llm_queries"],
         days_used=14,
         sufficient_data=True,
     )
