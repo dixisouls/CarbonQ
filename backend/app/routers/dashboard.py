@@ -13,6 +13,7 @@ from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel
 from loguru import logger
 
 from app.constants.platforms import PLATFORM_COLORS, PLATFORM_ICONS, PLATFORM_NAMES
@@ -383,20 +384,24 @@ async def get_google_search_comparison(user: User = Depends(get_current_user)):
     )
 
 
+class QuerySubmit(BaseModel):
+    platform: str
+    carbon_grams: float
+
+
 @router.post("/query", status_code=status.HTTP_201_CREATED)
 async def submit_query(
-    platform: str,
-    carbon_grams: float,
+    data: QuerySubmit,
     user: User = Depends(get_current_user),
 ):
     """Submit a new query from the browser extension."""
-    logger.info("Submitting query for user {}: {} ({}g CO2)", user.id, platform, carbon_grams)
+    logger.info("Submitting query for user {}: {} ({}g CO2)", user.id, data.platform, data.carbon_grams)
 
     collection = get_queries_collection()
     query_doc = {
         "user_id": ObjectId(user.id),
-        "platform": platform,
-        "carbon_grams": carbon_grams,
+        "platform": data.platform,
+        "carbon_grams": data.carbon_grams,
         "timestamp": datetime.utcnow(),
     }
 
