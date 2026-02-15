@@ -100,15 +100,31 @@ async function loadStats() {
     } else {
       breakdownListEl.innerHTML = platforms
         .map(
-          (platform) => `
-        <div class="breakdown-row">
-          <div class="breakdown-service">
-            <span class="service-name">${platform.name}</span>
-            <span class="service-count">${platform.count} ${platform.count === 1 ? 'query' : 'queries'}</span>
+          (platform) => {
+            // Map platform keys to icon filenames
+            const iconMap = {
+              'Gemini': 'gemini.svg',
+              'Claude': 'claude.svg',
+              'ChatGPT': 'chatgpt.svg',
+              'Perplexity': 'perplexity.svg',
+              'Google Search': 'google-search.svg'
+            };
+            const iconFile = iconMap[platform.name] || 'gemini.svg';
+            const rowClass = platform.name === 'Google Search' ? 'site-row google-row' : 'site-row';
+            
+            return `
+        <div class="${rowClass}">
+          <div class="site-icon">
+            <img src="/icons/platforms/${iconFile}" class="site-icon-img" alt="${platform.name}" />
           </div>
-          <span class="breakdown-value">${formatCarbon(platform.carbon)}</span>
+          <span class="site-name">${platform.name}</span>
+          <div class="site-stats">
+            <div class="site-queries">${platform.count} ${platform.count === 1 ? 'query' : 'queries'}</div>
+            <div class="site-emission">${formatCarbon(platform.carbon)}</div>
+          </div>
         </div>
-      `
+      `;
+          }
         )
         .join('');
     }
