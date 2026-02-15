@@ -11,92 +11,24 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from google.cloud.firestore_v1.base_query import FieldFilter
 from loguru import logger
-from pydantic import BaseModel
 
+from app.constants.platforms import PLATFORM_COLORS, PLATFORM_ICONS, PLATFORM_NAMES
 from app.dependencies import get_current_user
 from app.firebase import get_firestore_client
+from app.schemas.dashboard import (
+    DayData,
+    PlatformStat,
+    RecentQuery,
+    RecentResponse,
+    StatsResponse,
+    TrendResponse,
+    WeeklyResponse,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
-
-# ── Constants ───────────────────────────────────────────────────────────
-
-PLATFORM_NAMES: dict[str, str] = {
-    "gemini": "Gemini",
-    "claude": "Claude",
-    "perplexity": "Perplexity",
-    "chatgpt": "ChatGPT",
-}
-
-CARBON_PER_QUERY: dict[str, float] = {
-    "gemini": 1.6,
-    "claude": 3.5,
-    "perplexity": 4.0,
-    "chatgpt": 4.4,
-}
-
-PLATFORM_COLORS: dict[str, str] = {
-    "chatgpt": "#10b981",
-    "claude": "#f59e0b",
-    "gemini": "#3b82f6",
-    "perplexity": "#8b5cf6",
-}
-
-PLATFORM_ICONS: dict[str, str] = {
-    "chatgpt": "🤖",
-    "claude": "🧠",
-    "gemini": "✨",
-    "perplexity": "🔍",
-}
-
-# ── Response schemas ────────────────────────────────────────────────────
-
-
-class PlatformStat(BaseModel):
-    key: str
-    name: str
-    color: str
-    icon: str
-    count: int
-    carbon: float
-    percentage: float
-
-
-class StatsResponse(BaseModel):
-    total_queries: int
-    total_carbon: float
-    avg_carbon: float
-    platform_count: int
-    platforms: list[PlatformStat]
-
-
-class RecentQuery(BaseModel):
-    id: str
-    platform: str
-    platform_name: str
-    carbon_grams: float
-    timestamp: str | None = None
-
-
-class RecentResponse(BaseModel):
-    queries: list[RecentQuery]
-    count: int
-
-
-class DayData(BaseModel):
-    date: str
-    label: str
-    queries: int
-    carbon: float
-
-
-class WeeklyResponse(BaseModel):
-    days: list[DayData]
-    total_queries: int
-    total_carbon: float
-
 
 # ── Internal helpers ────────────────────────────────────────────────────
 
@@ -164,6 +96,33 @@ def _aggregate(queries: list[dict]) -> dict[str, Any]:
         "platform_count": len(platforms),
         "platforms": platforms,
     }
+
+
+def _apply_exponential_smoothing(values: list[float], alpha: float = 0.35) -> list[float]:
+    """Apply simple exponential smoothing: S_0 = Y_0, S_t = alpha*Y_t + (1-alpha)*S_{t-1}."""
+    if not values:
+        return []
+    smoothed: list[float] = [values[0]]
+    for t in range(1, len(values)):
+        s = alpha * values[t] + (1 - alpha) * smoothed[t - 1]
+        smoothed.append(s)
+    return smoothed
+
+
+def _detect_trend(smoothed: list[float], threshold_g: float = 1.0) -> str:
+    """
+    Compare first and last smoothed values. Use threshold to avoid noise.
+    Returns 'up' | 'down' | 'stable'.
+    """
+    if len(smoothed) < 2:
+        return "stable"
+    first, last = smoothed[0], smoothed[-1]
+    diff = last - first
+    if diff > threshold_g:
+        return "up"
+    if diff < -threshold_g:
+        return "down"
+    return "stable"
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────
@@ -276,3 +235,65 @@ async def get_weekly(user: dict = Depends(get_current_user)):
         )
 
     return WeeklyResponse(days=days, total_queries=total_q, total_carbon=round(total_c, 2))
+
+
+@router.get("/trend", response_model=TrendResponse)
+async def get_trend(user: dict = Depends(get_current_user)):
+    """
+    Predict upcoming trend and estimated total emission for next week.
+
+    Uses 7–14 days of emission data with exponential smoothing (alpha=0.35).
+    Returns trend direction, estimated total for next 7 days, and metadata.
+    """
+    uid = user["uid"]
+    now = datetime.now(timezone.utc)
+    fourteen_days_ago = now - timedelta(days=13)
+    start = fourteen_days_ago.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    logger.info("Fetching trend data for user {} (since {})", uid, start.isoformat())
+
+    queries = await asyncio.to_thread(_fetch_queries_since, uid, start)
+
+    # Group by date
+    daily: dict[str, float] = {}
+    for q in queries:
+        ts = q.get("timestamp")
+        if ts is None or not hasattr(ts, "date"):
+            continue
+        day_key = ts.strftime("%Y-%m-%d")
+        daily[day_key] = daily.get(day_key, 0.0) + q.get("carbonGrams", 0.0)
+
+    # Build 14-day carbon series (oldest → newest)
+    carbon_series: list[float] = []
+    days_with_data = 0
+    for i in range(14):
+        d = start + timedelta(days=i)
+        key = d.strftime("%Y-%m-%d")
+        carbon = daily.get(key, 0.0)
+        carbon_series.append(carbon)
+        if carbon > 0:
+            days_with_data += 1
+
+    sufficient_data = days_with_data >= 7
+
+    if not sufficient_data:
+        return TrendResponse(
+            trend="stable",
+            estimated_total_next_week=0.0,
+            last_smoothed_value=0.0,
+            days_used=len(carbon_series),
+            sufficient_data=False,
+        )
+
+    smoothed = _apply_exponential_smoothing(carbon_series, alpha=0.35)
+    last_smoothed = smoothed[-1] if smoothed else 0.0
+    estimated_total = 7.0 * last_smoothed
+    trend = _detect_trend(smoothed)
+
+    return TrendResponse(
+        trend=trend,
+        estimated_total_next_week=round(estimated_total, 2),
+        last_smoothed_value=round(last_smoothed, 2),
+        days_used=14,
+        sufficient_data=True,
+    )
