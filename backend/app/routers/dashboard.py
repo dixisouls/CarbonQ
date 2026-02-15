@@ -11,92 +11,23 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from google.cloud.firestore_v1.base_query import FieldFilter
 from loguru import logger
-from pydantic import BaseModel
 
+from app.constants.platforms import PLATFORM_COLORS, PLATFORM_ICONS, PLATFORM_NAMES
 from app.dependencies import get_current_user
 from app.firebase import get_firestore_client
+from app.schemas.dashboard import (
+    DayData,
+    PlatformStat,
+    RecentQuery,
+    RecentResponse,
+    StatsResponse,
+    WeeklyResponse,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
-
-# ── Constants ───────────────────────────────────────────────────────────
-
-PLATFORM_NAMES: dict[str, str] = {
-    "gemini": "Gemini",
-    "claude": "Claude",
-    "perplexity": "Perplexity",
-    "chatgpt": "ChatGPT",
-}
-
-CARBON_PER_QUERY: dict[str, float] = {
-    "gemini": 1.6,
-    "claude": 3.5,
-    "perplexity": 4.0,
-    "chatgpt": 4.4,
-}
-
-PLATFORM_COLORS: dict[str, str] = {
-    "chatgpt": "#10b981",
-    "claude": "#f59e0b",
-    "gemini": "#3b82f6",
-    "perplexity": "#8b5cf6",
-}
-
-PLATFORM_ICONS: dict[str, str] = {
-    "chatgpt": "🤖",
-    "claude": "🧠",
-    "gemini": "✨",
-    "perplexity": "🔍",
-}
-
-# ── Response schemas ────────────────────────────────────────────────────
-
-
-class PlatformStat(BaseModel):
-    key: str
-    name: str
-    color: str
-    icon: str
-    count: int
-    carbon: float
-    percentage: float
-
-
-class StatsResponse(BaseModel):
-    total_queries: int
-    total_carbon: float
-    avg_carbon: float
-    platform_count: int
-    platforms: list[PlatformStat]
-
-
-class RecentQuery(BaseModel):
-    id: str
-    platform: str
-    platform_name: str
-    carbon_grams: float
-    timestamp: str | None = None
-
-
-class RecentResponse(BaseModel):
-    queries: list[RecentQuery]
-    count: int
-
-
-class DayData(BaseModel):
-    date: str
-    label: str
-    queries: int
-    carbon: float
-
-
-class WeeklyResponse(BaseModel):
-    days: list[DayData]
-    total_queries: int
-    total_carbon: float
-
 
 # ── Internal helpers ────────────────────────────────────────────────────
 
