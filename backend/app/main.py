@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.firebase import get_firebase_app, get_firestore_client
 from app.logging_config import setup_logging
 from app.routers import auth, dashboard
+from app.schemas.common import HealthResponse
 
 # ── Bootstrap logging first ─────────────────────────────────────────────
 settings = get_settings()
@@ -85,6 +86,6 @@ app.include_router(dashboard.router, prefix=settings.api_prefix)
 # ── Health check ────────────────────────────────────────────────────────
 
 
-@app.get(f"{settings.api_prefix}/health")
+@app.get(f"{settings.api_prefix}/health", response_model=HealthResponse)
 async def health():
-    return {"status": "ok", "service": settings.app_name}
+    return HealthResponse(status="ok", service=settings.app_name)
