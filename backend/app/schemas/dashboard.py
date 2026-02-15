@@ -49,3 +49,11 @@ class WeeklyResponse(BaseModel):
     days: list[DayData]
     total_queries: int
     total_carbon: float
+
+
+class TrendResponse(BaseModel):
+    trend: str  # "up" | "down" | "stable"
+    estimated_total_next_week: float
+    last_smoothed_value: float
+    days_used: int
+    sufficient_data: bool
