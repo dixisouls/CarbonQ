@@ -5,6 +5,7 @@
   "description": "Track the carbon footprint of your AI queries across ChatGPT, Claude, Gemini, Perplexity, and Google Search.",
   "permissions": ["storage"],
   "host_permissions": [
+    "http://localhost:8000/*",
     "*://chatgpt.com/*",
     "*://chat.openai.com/*",
     "*://claude.ai/*",

@@ -19,19 +19,34 @@ async function apiRequest(endpoint, options = {}) {
     credentials: 'include', // Send cookies
   };
 
-  const response = await fetch(url, config);
+  console.log('[CarbonQ API] Request:', url, config);
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      // Clear stored auth state
-      await chrome.storage.local.remove(['carbonq_user', 'carbonq_logged_in']);
-      throw new Error('Unauthorized');
+  try {
+    const response = await fetch(url, config);
+    console.log('[CarbonQ API] Response status:', response.status);
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        // Clear stored auth state
+        await chrome.storage.local.remove(['carbonq_user', 'carbonq_logged_in']);
+        throw new Error('Unauthorized');
+      }
+      const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+      
+      // Handle validation errors (422) which return detail as an array
+      if (Array.isArray(error.detail)) {
+        const firstError = error.detail[0];
+        throw new Error(firstError?.msg || 'Validation failed');
+      }
+      
+      throw new Error(error.detail || 'Request failed');
     }
-    const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-    throw new Error(error.detail || 'Request failed');
-  }
 
-  return response.json();
+    return response.json();
+  } catch (err) {
+    console.error('[CarbonQ API] Fetch error:', err);
+    throw err;
+  }
 }
 
 /**
