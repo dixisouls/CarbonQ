@@ -192,7 +192,7 @@ const setupFns = {
   claude: setupClaude,
   gemini: setupGemini,
   perplexity: setupPerplexity,
-  google: setupGoogle,
+  google_search: setupGoogle,
 };
 
 const setup = setupFns[platform];

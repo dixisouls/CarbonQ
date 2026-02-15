@@ -24,4 +24,6 @@ export const SITE_CONFIG = {
   'gemini.google.com': 'gemini',
   'www.perplexity.ai': 'perplexity',
   'perplexity.ai': 'perplexity',
+  'www.google.com': 'google_search',
+  'google.com': 'google_search',
 };
