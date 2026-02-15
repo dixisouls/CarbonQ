@@ -138,9 +138,31 @@ function setupPerplexity() {
 }
 
 function setupGoogle() {
-  // Google Search form submission
+  // Detect searches that arrived via omnibox / address bar / external navigation.
+  // When Chrome's omnibox is used, the page loads directly at /search?q=...
+  // and no form-submit event fires, so we detect it on page load.
+  const params = new URLSearchParams(window.location.search);
+  const query = params.get('q');
+  if (query && window.location.pathname === '/search') {
+    // Avoid double-counting: if we already reported this exact URL recently
+    // (e.g. the user searched on google.com and the form-submit fired right
+    // before navigation), skip it.
+    const cacheKey = '__carbonq_last_search__';
+    const last = sessionStorage.getItem(cacheKey);
+    const now = Date.now();
+    if (!last || now - Number(last) > DEBOUNCE_MS) {
+      sessionStorage.setItem(cacheKey, String(now));
+      reportQuery();
+    }
+  }
+
+  // Google Search form submission — also store timestamp so the subsequent
+  // page-load detection (above) can skip the duplicate.
   observeForReattach('form[action="/search"]', (form) => {
-    form.addEventListener('submit', () => reportQuery(), true);
+    form.addEventListener('submit', () => {
+      sessionStorage.setItem('__carbonq_last_search__', String(Date.now()));
+      reportQuery();
+    }, true);
   });
 
   // Enter key on the search input / textarea
@@ -150,6 +172,7 @@ function setupGoogle() {
       const name = el?.getAttribute?.('name');
       const tag = el?.tagName?.toLowerCase();
       if (name === 'q' && (tag === 'input' || tag === 'textarea')) {
+        sessionStorage.setItem('__carbonq_last_search__', String(Date.now()));
         reportQuery();
       }
     }
@@ -157,7 +180,10 @@ function setupGoogle() {
 
   // Search button clicks
   observeForReattach('input[name="btnK"], button[aria-label="Google Search"]', (btn) => {
-    btn.addEventListener('click', () => reportQuery(), true);
+    btn.addEventListener('click', () => {
+      sessionStorage.setItem('__carbonq_last_search__', String(Date.now()));
+      reportQuery();
+    }, true);
   });
 }
 
