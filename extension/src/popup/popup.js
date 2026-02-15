@@ -12,16 +12,17 @@ const loadingView = document.getElementById('loading-view');
 const loginView = document.getElementById('login-view');
 const dashboardView = document.getElementById('dashboard-view');
 
-const loginForm = document.getElementById('login-form');
+const loginForm = document.getElementById('auth-form');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
-const loginBtn = document.getElementById('login-btn');
-const loginError = document.getElementById('login-error');
+const loginBtn = document.getElementById('auth-btn');
+const loginError = document.getElementById('auth-error');
 
 const userEmailEl = document.getElementById('user-email');
 const totalQueriesEl = document.getElementById('total-queries');
-const totalCarbonEl = document.getElementById('total-carbon');
-const topPlatformsEl = document.getElementById('top-platforms');
+const heroValueEl = document.getElementById('hero-value');
+const heroUnitEl = document.getElementById('hero-unit');
+const breakdownListEl = document.getElementById('breakdown-list');
 const logoutBtn = document.getElementById('logout-btn');
 const dashLoading = document.getElementById('dash-loading');
 
@@ -85,26 +86,27 @@ async function loadStats() {
 
     // Render totals
     totalQueriesEl.textContent = stats.total_queries.toLocaleString();
-    totalCarbonEl.textContent = formatCarbon(stats.total_carbon);
+    
+    // Format and display hero carbon value
+    const { value, unit } = formatCarbonParts(stats.total_carbon);
+    heroValueEl.textContent = value;
+    heroUnitEl.textContent = unit;
 
-    // Top 2 platforms by query count
-    const sorted = stats.platforms.slice(0, 2);
+    // All platforms breakdown
+    const platforms = stats.platforms;
 
-    if (sorted.length === 0) {
-      topPlatformsEl.innerHTML = '<p class="muted">No queries tracked yet. Start chatting!</p>';
+    if (platforms.length === 0) {
+      breakdownListEl.innerHTML = '<p class="muted">No queries tracked yet. Start chatting!</p>';
     } else {
-      topPlatformsEl.innerHTML = sorted
+      breakdownListEl.innerHTML = platforms
         .map(
-          (platform, idx) => `
-        <div class="platform-item">
-          <div style="display:flex;align-items:center">
-            <span class="rank rank-${idx + 1}">${idx + 1}</span>
-            <div class="platform-info">
-              <span class="platform-name">${platform.name}</span>
-              <span class="platform-queries">${platform.count} ${platform.count === 1 ? 'query' : 'queries'}</span>
-            </div>
+          (platform) => `
+        <div class="breakdown-row">
+          <div class="breakdown-service">
+            <span class="service-name">${platform.name}</span>
+            <span class="service-count">${platform.count} ${platform.count === 1 ? 'query' : 'queries'}</span>
           </div>
-          <span class="platform-carbon">${formatCarbon(platform.carbon)}</span>
+          <span class="breakdown-value">${formatCarbon(platform.carbon)}</span>
         </div>
       `
         )
@@ -112,7 +114,7 @@ async function loadStats() {
     }
   } catch (err) {
     console.error('[CarbonQ] Failed to load stats:', err);
-    topPlatformsEl.innerHTML = '<p class="muted">Failed to load data.</p>';
+    breakdownListEl.innerHTML = '<p class="muted">Failed to load data.</p>';
   }
 
   dashLoading.classList.add('hidden');
@@ -124,4 +126,11 @@ function formatCarbon(grams) {
     return (grams / 1000).toFixed(2) + ' kg';
   }
   return grams.toFixed(1) + ' g';
+}
+
+function formatCarbonParts(grams) {
+  if (grams >= 1000) {
+    return { value: (grams / 1000).toFixed(2), unit: 'kg' };
+  }
+  return { value: grams.toFixed(1), unit: 'g' };
 }
