@@ -27,11 +27,7 @@ class Settings(BaseSettings):
     app_name: str = "CarbonQ API"
     debug: bool = False
     api_prefix: str = "/api"
-    cors_origins: list[str] = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-    ]
+    cors_origins: list[str] = ["*"]  # Allow all origins (Chrome extension + web apps)
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).resolve().parent.parent.parent / ".env"),
