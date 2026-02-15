@@ -67,8 +67,8 @@ async def register(body: AuthRequest, response: Response):
         key="session",
         value=session_token,
         httponly=True,
-        secure=not settings.debug,  # Use secure cookies in production
-        samesite="lax",
+        secure= not settings.debug,
+        samesite="none",
         max_age=settings.session_expire_hours * 3600,
     )
 
@@ -122,7 +122,7 @@ async def login(body: AuthRequest, response: Response):
         value=session_token,
         httponly=True,
         secure=not settings.debug,
-        samesite="lax",
+        samesite="none",
         max_age=settings.session_expire_hours * 3600,
     )
 
