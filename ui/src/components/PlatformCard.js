@@ -1,4 +1,5 @@
 import React from 'react';
+import { getPlatformIcon } from '../utils/platformIcons';
 import './PlatformCard.css';
 
 export default function PlatformCard({ platform, total }) {
@@ -7,7 +8,9 @@ export default function PlatformCard({ platform, total }) {
   return (
     <div className="platform-card">
       <div className="platform-card-header">
-        <span className="platform-card-emoji">{platform.icon}</span>
+        <span className="platform-card-icon">
+          {getPlatformIcon(platform.key, 24)}
+        </span>
         <div className="platform-card-info">
           <span className="platform-card-name">{platform.name}</span>
           <span className="platform-card-count">{platform.count} queries</span>
