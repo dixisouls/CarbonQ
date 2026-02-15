@@ -40,3 +40,7 @@ venv/
 
 # Backend logs
 backend/logs/
+
+# Keys and Scripts
+key.pem
+start.sh
