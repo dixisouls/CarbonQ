@@ -11,39 +11,14 @@ from __future__ import annotations
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
-from pydantic import BaseModel, EmailStr
 
 from app.config import get_settings
 from app.dependencies import get_current_user
 from app.firebase import get_firebase_auth, get_firestore_client
+from app.schemas.auth import AuthRequest, AuthResponse, RefreshRequest, UserResponse
 from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# ── Request / Response schemas ──────────────────────────────────────────
-
-
-class AuthRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
-class AuthResponse(BaseModel):
-    id_token: str
-    refresh_token: str
-    uid: str
-    email: str
-    expires_in: str
-
-
-class UserResponse(BaseModel):
-    uid: str
-    email: str | None = None
-
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
