@@ -5,6 +5,7 @@ import {
   Leaf, LogOut, Activity, Cloud, Search, Zap,
   TrendingUp, TrendingDown, Minus, Sprout
 } from 'lucide-react';
+import { getPlatformIcon } from '../utils/platformIcons';
 import EmissionsChart from '../components/EmissionsChart';
 import QueriesChart from '../components/QueriesChart';
 import PlatformCard from '../components/PlatformCard';
@@ -189,7 +190,9 @@ export default function Dashboard() {
                   .filter(p => p.key !== topPlatform?.key)
                   .map((p) => (
                     <div key={p.key} className="platform-mini">
-                      <span className="platform-mini-icon">{p.icon}</span>
+                      <span className="platform-mini-icon">
+                        {getPlatformIcon(p.key, 16)}
+                      </span>
                       <span className="platform-mini-name">{p.name}</span>
                       <div className="platform-mini-bar-wrap">
                         <div

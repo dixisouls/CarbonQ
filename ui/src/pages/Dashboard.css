@@ -262,9 +262,11 @@
 }
 
 .platform-mini-icon {
-  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
-  text-align: center;
+  height: 24px;
 }
 
 .platform-mini-name {
