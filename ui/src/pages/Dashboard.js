@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { dashboardAPI } from '../services/api';
 import {
   Leaf, LogOut, Activity, Cloud, Search, Zap,
-  TrendingUp, TrendingDown, Minus, Sprout
+  TrendingUp, TrendingDown, Minus, Sprout, TreePine
 } from 'lucide-react';
 import { getPlatformIcon } from '../utils/platformIcons';
 import EmissionsChart from '../components/EmissionsChart';
@@ -66,6 +66,31 @@ export default function Dashboard() {
     if (!stats) return 0;
     return stats.avg_carbon?.toFixed(1) || 0;
   }, [stats]);
+
+  const carbonSavings = useMemo(() => {
+    if (!weekly?.days || weekly.days.length < 2) return null;
+    const days = weekly.days;
+    const recent = days.slice(-3).reduce((s, d) => s + d.carbon, 0) / 3;
+    const older = days.slice(0, 3).reduce((s, d) => s + d.carbon, 0) / 3;
+    if (older === 0) return null;
+    const reducedPerDay = older - recent;
+    if (reducedPerDay <= 0) return null;
+    const co2Reduced = (reducedPerDay * 3);
+    const treeHours = co2Reduced / 2.5;
+    return {
+      co2Reduced: co2Reduced.toFixed(1),
+      treeHours: treeHours.toFixed(1),
+    };
+  }, [weekly]);
+
+  const ecoScore = useMemo(() => {
+    const avg = parseFloat(nextSearchCarbon) || 0;
+    if (avg <= 0.3) return { dots: 5, label: 'Excellent' };
+    if (avg <= 0.8) return { dots: 4, label: 'Great' };
+    if (avg <= 2.0) return { dots: 3, label: 'Good' };
+    if (avg <= 5.0) return { dots: 2, label: 'Fair' };
+    return { dots: 1, label: 'High Impact' };
+  }, [nextSearchCarbon]);
 
   if (loading) {
     return (
@@ -210,13 +235,34 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Google Search Comparison - moved to position 2, bigger */}
-          <div className="dash-bottom-card google-comparison-card">
+          {/* Carbon Savings / Google Search Comparison */}
+          <div className={`dash-bottom-card ${trend.direction === 'down' && carbonSavings ? 'carbon-savings-card' : 'google-comparison-card'}`}>
             <h3 className="chart-title">
-              <Search size={16} />
-              Google Search Comparison
+              {trend.direction === 'down' && carbonSavings ? <TreePine size={16} /> : <Search size={16} />}
+              Your Carbon Savings
             </h3>
-            {comparison?.sufficient_data ? (
+            {trend.direction === 'down' && carbonSavings ? (
+              <div className="comparison-content">
+                <div className="savings-hero">
+                  <span className="savings-hero-value">{carbonSavings.treeHours}</span>
+                  <span className="savings-hero-label">Tree Hours Saved</span>
+                </div>
+                <div className="comparison-stats">
+                  <div className="comparison-stat comparison-stat-actual">
+                    <span className="comparison-stat-label">Current Emissions</span>
+                    <span className="comparison-stat-value">
+                      {comparison?.actual_emission || stats?.total_carbon?.toFixed(1) || 0}g CO₂
+                    </span>
+                  </div>
+                  <div className="comparison-stat comparison-stat-reduced">
+                    <span className="comparison-stat-label">CO₂ Reduced</span>
+                    <span className="comparison-stat-value">
+                      {carbonSavings.co2Reduced}g CO₂
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : comparison?.sufficient_data ? (
               <div className="comparison-content">
                 <div className="comparison-multiplier">
                   <span className="comparison-multiplier-value">{comparison.times_more}×</span>
@@ -258,6 +304,17 @@ export default function Dashboard() {
                   <span className="next-search-unit-small">g CO₂</span>
                 </span>
                 <span className="next-search-hint-small">Average per query</span>
+              </div>
+              <div className="eco-score">
+                <div className="eco-score-dots">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <span
+                      key={i}
+                      className={`eco-dot ${i <= ecoScore.dots ? 'eco-dot-active' : 'eco-dot-inactive'}`}
+                    />
+                  ))}
+                </div>
+                <span className="eco-score-label">Eco Score: {ecoScore.label}</span>
               </div>
             </div>
           </div>
