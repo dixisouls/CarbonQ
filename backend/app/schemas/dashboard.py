@@ -57,3 +57,12 @@ class TrendResponse(BaseModel):
     last_smoothed_value: float
     days_used: int
     sufficient_data: bool
+
+
+class GoogleSearchComparisonResponse(BaseModel):
+    actual_emission: float  # Current total LLM emissions (grams)
+    forecasted_emission: float  # If 35% were Google searches (grams)
+    times_more: float  # Multiplier showing X times more CO2
+    total_llm_queries: int  # Number of LLM queries analyzed
+    days_used: int  # Number of days of data used
+    sufficient_data: bool  # Whether we have at least 7 days
